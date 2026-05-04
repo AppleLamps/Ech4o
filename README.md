@@ -31,13 +31,13 @@ proxy.
 
 ## Requirements
 
-- Node.js 20 or newer
+- Node.js 20
 - npm
 - OpenRouter API key
 
 ## Environment Variables
 
-Create a local environment file:
+For local development, create a local environment file:
 
 ```bash
 cp .env.example .env.local
@@ -60,6 +60,9 @@ OPENROUTER_CACHE_TTL_SECONDS=300
 `OPENROUTER_SITE_URL` and `OPENROUTER_APP_TITLE` are sent as attribution
 headers. `OPENROUTER_CACHE_TTL_SECONDS` controls the requested OpenRouter
 response-cache TTL and defaults to `300` seconds when omitted.
+
+Do not commit `.env` or `.env.local`. They are ignored by Git and should be
+configured in Vercel project settings for production.
 
 ## Development
 
@@ -150,6 +153,8 @@ lib/
 
 The app is ready for Vercel with `vercel.json` and a standard Next.js setup.
 The production URL is [https://ech4o.vercel.app](https://ech4o.vercel.app).
+The project pins Node to `20.x` in `package.json` so Vercel does not
+automatically jump to a future major Node release.
 
 1. Push the repository to GitHub.
 2. Import the project in Vercel.
@@ -158,6 +163,10 @@ The production URL is [https://ech4o.vercel.app](https://ech4o.vercel.app).
 5. Set `OPENROUTER_APP_TITLE` to `Ech4o`.
 6. Add `OPENROUTER_CACHE_TTL_SECONDS` if you want a custom cache TTL.
 7. Deploy.
+
+`.vercelignore` excludes local environment files, local build output, dependency
+folders, and test artifacts from CLI deployments. GitHub-backed Vercel deploys
+will use the committed files only.
 
 ## Notes
 

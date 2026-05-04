@@ -106,14 +106,18 @@ POST https://openrouter.ai/api/v1/chat/completions
 
 Request fields sent by the client:
 
-- `model`
 - `responseMode`
 - `messages`
 
-The server prepends the Ech4o system prompt from `lib/system-prompt.ts`.
+The server ignores caller-supplied model names and always uses the default model
+from `lib/defaults.ts`. It also prepends the Ech4o system prompt from
+`lib/system-prompt.ts`.
 Extended mode reserves up to 128,000 output tokens for
 `openai/gpt-5.4-nano`. Standard mode uses a smaller output cap and leaves more
 of the 400,000-token context window for input.
+
+`/api/chat` enforces a server-side request body cap and a lightweight per-IP
+rate limit before forwarding anything to OpenRouter.
 
 When a user attaches images or PDFs, the server converts user message content
 from plain text to a multimodal content array. Text is sent first, followed by

@@ -3,7 +3,7 @@
 import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { DEFAULT_MODEL, SUGGESTED_PROMPTS } from "@/lib/defaults";
+import { SUGGESTED_PROMPTS } from "@/lib/defaults";
 
 type Role = "user" | "assistant";
 
@@ -37,7 +37,6 @@ type Conversation = {
   createdAt: string;
   updatedAt: string;
   messages: Message[];
-  model: string;
   manualTitle?: boolean;
 };
 
@@ -330,7 +329,6 @@ function isConversation(value: unknown): value is Conversation {
     typeof candidate.title === "string" &&
     typeof candidate.createdAt === "string" &&
     typeof candidate.updatedAt === "string" &&
-    typeof candidate.model === "string" &&
     Array.isArray(candidate.messages)
   );
 }
@@ -341,7 +339,7 @@ function stripPrivateConversationFields(conversation: Conversation) {
     ...publicConversation
   } = conversation as Conversation & { systemPrompt?: string };
 
-  return { ...publicConversation, model: DEFAULT_MODEL };
+  return publicConversation;
 }
 
 export default function ChatApp() {
@@ -352,7 +350,6 @@ export default function ChatApp() {
   const [input, setInput] = useState("");
   const [pendingImages, setPendingImages] = useState<ImageAttachment[]>([]);
   const [pendingPdfs, setPendingPdfs] = useState<PdfAttachment[]>([]);
-  const [model, setModel] = useState(DEFAULT_MODEL);
   const [requestMode, setRequestMode] = useState<RequestMode>("standard");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -399,7 +396,6 @@ export default function ChatApp() {
         setConversations(saved);
         setActiveConversationId(latest.id);
         setMessages(latest.messages);
-        setModel(DEFAULT_MODEL);
         setLastUserMessage(
           [...latest.messages].reverse().find((message) => message.role === "user")
             ?.content || null
@@ -457,7 +453,6 @@ export default function ChatApp() {
         createdAt: existing?.createdAt || now,
         updatedAt: now,
         messages: nextMessages,
-        model,
         manualTitle: existing?.manualTitle
       };
 
@@ -473,7 +468,6 @@ export default function ChatApp() {
   function openConversation(conversation: Conversation) {
     setActiveConversationId(conversation.id);
     setMessages(conversation.messages);
-    setModel(DEFAULT_MODEL);
     setInput("");
     setPendingImages([]);
     setPendingPdfs([]);
@@ -492,8 +486,7 @@ export default function ChatApp() {
       title: "New chat",
       createdAt: now,
       updatedAt: now,
-      messages: [],
-      model
+      messages: []
     };
 
     setConversations((current) => sortConversations([conversation, ...current]));
@@ -627,7 +620,6 @@ export default function ChatApp() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model,
           responseMode: requestMode,
           messages: apiMessages
         })

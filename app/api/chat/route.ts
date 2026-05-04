@@ -43,9 +43,13 @@ type OpenRouterMessage = {
 };
 
 type ChatRequest = {
-  model?: string;
   responseMode?: "standard" | "extended";
   messages?: ChatMessage[];
+};
+
+type RateLimitBucket = {
+  windowStart: number;
+  cost: number;
 };
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
@@ -54,12 +58,20 @@ const STANDARD_MAX_OUTPUT_TOKENS = 8_192;
 const EXTENDED_MAX_OUTPUT_TOKENS = 128_000;
 const RESERVED_SYSTEM_AND_OVERHEAD_TOKENS = 8_000;
 const APPROX_CHARS_PER_TOKEN = 4;
+const MAX_REQUEST_BODY_CHARS = 2_000_000;
 const MAX_MESSAGES = 512;
 const MAX_MESSAGE_CHARS = 1_000_000;
 const MAX_SYSTEM_PROMPT_CHARS = 300_000;
+const RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
+const RATE_LIMIT_MAX_COST = 20;
+const STANDARD_REQUEST_COST = 1;
+const EXTENDED_REQUEST_COST = 4;
+const ATTACHMENT_REQUEST_COST = 2;
 const SUPPORTED_IMAGE_DATA_URL_PATTERN =
   /^data:(image\/png|image\/jpeg|image\/webp|image\/gif);base64,/i;
 const SUPPORTED_PDF_DATA_URL_PATTERN = /^data:application\/pdf;base64,/i;
+
+const rateLimitBuckets = new Map<string, RateLimitBucket>();
 
 function isPublicUrl(value: string) {
   try {
@@ -130,6 +142,55 @@ function errorMessage(status: number, fallback?: string) {
     return "OpenRouter is having trouble right now. Please retry in a moment.";
   }
   return fallback || "The chat request failed.";
+}
+
+function clientIp(request: Request) {
+  const forwardedFor = request.headers.get("x-forwarded-for");
+  const firstForwardedIp = forwardedFor?.split(",")[0]?.trim();
+
+  return (
+    firstForwardedIp ||
+    request.headers.get("x-real-ip") ||
+    request.headers.get("cf-connecting-ip") ||
+    "unknown"
+  );
+}
+
+function requestCost(
+  responseMode: ChatRequest["responseMode"],
+  messages: ChatMessage[]
+) {
+  const hasAttachments = messages.some(
+    (message) => message.imageUrls?.length || message.files?.length
+  );
+
+  return (
+    (responseMode === "extended" ? EXTENDED_REQUEST_COST : STANDARD_REQUEST_COST) +
+    (hasAttachments ? ATTACHMENT_REQUEST_COST : 0)
+  );
+}
+
+function rateLimitError(key: string, cost: number) {
+  const now = Date.now();
+  const existing = rateLimitBuckets.get(key);
+
+  for (const [bucketKey, bucket] of rateLimitBuckets) {
+    if (now - bucket.windowStart >= RATE_LIMIT_WINDOW_MS) {
+      rateLimitBuckets.delete(bucketKey);
+    }
+  }
+
+  if (!existing || now - existing.windowStart >= RATE_LIMIT_WINDOW_MS) {
+    rateLimitBuckets.set(key, { windowStart: now, cost });
+    return null;
+  }
+
+  if (existing.cost + cost > RATE_LIMIT_MAX_COST) {
+    return Math.ceil((RATE_LIMIT_WINDOW_MS - (now - existing.windowStart)) / 1000);
+  }
+
+  existing.cost += cost;
+  return null;
 }
 
 function contentLength(messages: ChatMessage[]) {
@@ -261,7 +322,29 @@ export async function POST(request: Request) {
 
   let body: ChatRequest;
   try {
-    body = (await request.json()) as ChatRequest;
+    const contentLength = Number(request.headers.get("content-length") || "0");
+
+    if (contentLength > MAX_REQUEST_BODY_CHARS) {
+      return NextResponse.json(
+        {
+          error: `Request body is too large. Keep it under ${MAX_REQUEST_BODY_CHARS.toLocaleString()} characters.`
+        },
+        { status: 413 }
+      );
+    }
+
+    const rawBody = await request.text();
+
+    if (rawBody.length > MAX_REQUEST_BODY_CHARS) {
+      return NextResponse.json(
+        {
+          error: `Request body is too large. Keep it under ${MAX_REQUEST_BODY_CHARS.toLocaleString()} characters.`
+        },
+        { status: 413 }
+      );
+    }
+
+    body = JSON.parse(rawBody) as ChatRequest;
   } catch {
     return NextResponse.json(
       { error: "Invalid JSON request body." },
@@ -269,24 +352,32 @@ export async function POST(request: Request) {
     );
   }
 
-  const model =
-    typeof body.model === "string" && body.model.trim()
-      ? body.model.trim()
-      : DEFAULT_MODEL;
+  const model = DEFAULT_MODEL;
   const responseMode = body.responseMode === "extended" ? "extended" : "standard";
   const systemPrompt = DEFAULT_SYSTEM_PROMPT;
   const clientMessages = Array.isArray(body.messages)
     ? body.messages.filter(isChatMessage)
     : [];
 
-  if (!model) {
-    return NextResponse.json({ error: "Model is required." }, { status: 400 });
-  }
-
   if (clientMessages.length === 0) {
     return NextResponse.json(
       { error: "At least one user message is required." },
       { status: 400 }
+    );
+  }
+
+  const retryAfterSeconds = rateLimitError(
+    clientIp(request),
+    requestCost(responseMode, clientMessages)
+  );
+
+  if (retryAfterSeconds) {
+    return NextResponse.json(
+      { error: "Too many chat requests. Wait a moment, then retry." },
+      {
+        status: 429,
+        headers: { "Retry-After": String(retryAfterSeconds) }
+      }
     );
   }
 

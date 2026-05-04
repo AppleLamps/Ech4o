@@ -17,7 +17,7 @@ proxy.
 - Text, image, and PDF attachments from local files
 - Hosted image and hosted PDF URL attachments
 - Multimodal OpenRouter payloads for images and PDFs
-- PDF parsing through OpenRouter's `file-parser` plugin
+- PDF file inputs through OpenRouter with automatic parser selection
 - Response caching via OpenRouter cache headers
 - Copy, retry, share/export, voice input, and extended-answer controls
 

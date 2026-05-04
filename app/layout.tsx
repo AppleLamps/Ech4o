@@ -3,7 +3,10 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Ech4o",
-  description: "A polished OpenRouter chat app for direct, useful conversations."
+  description: "A polished OpenRouter chat app for direct, useful conversations.",
+  icons: {
+    icon: "/favicon.svg"
+  }
 };
 
 export const viewport: Viewport = {

@@ -32,7 +32,7 @@ type OpenRouterContent =
       type: "file";
       file: {
         filename: string;
-        fileData: string;
+        file_data: string;
       };
     };
 
@@ -130,7 +130,7 @@ function isChatMessage(value: unknown): value is ChatMessage {
 
 function errorMessage(status: number, fallback?: string) {
   if (status === 400) {
-    return "OpenRouter rejected the request. Check the model, messages, or system prompt.";
+    return fallback || "OpenRouter rejected the request. Check the model, messages, or system prompt.";
   }
   if (status === 401) {
     return "OpenRouter authentication failed. Check OPENROUTER_API_KEY in .env.local.";
@@ -301,7 +301,7 @@ function toOpenRouterMessage(message: ChatMessage): OpenRouterMessage {
         type: "file" as const,
         file: {
           filename: file.filename,
-          fileData: file.fileData
+          file_data: file.fileData
         }
       }))
     ],
@@ -404,8 +404,6 @@ export async function POST(request: Request) {
       : []),
     ...clientMessages.map(toOpenRouterMessage)
   ];
-  const hasPdfFiles = clientMessages.some((message) => message.files?.length);
-
   const headers: Record<string, string> = {
     Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
     "Content-Type": "application/json",
@@ -430,18 +428,6 @@ export async function POST(request: Request) {
         model,
         messages,
         max_tokens: maxOutputTokens(responseMode),
-        ...(hasPdfFiles
-          ? {
-              plugins: [
-                {
-                  id: "file-parser",
-                  pdf: {
-                    engine: "cloudflare-ai"
-                  }
-                }
-              ]
-            }
-          : {}),
         stream: false
       })
     });
